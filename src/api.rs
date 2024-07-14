@@ -6,17 +6,24 @@ use select::{
 };
 
 pub struct Fiction {
-    title: String,
-    chapters: Vec<Chapter>,
+    pub title: String,
+    pub chapters: Vec<ChapterReference>,
+}
+
+#[derive(Debug, Default)]
+pub struct ChapterReference {
+    pub path: String,
+    pub name: String,
+    pub time: u32,
 }
 
 #[derive(Debug, Default)]
 pub struct Chapter {
-    name: String,
-    path: String,
-    content: String,
-    published: u32,
-    edited: u32,
+    pub name: String,
+    pub path: String,
+    pub content: String,
+    pub published: u32,
+    pub edited: u32,
 }
 
 fn traverse<'a, 'b>(n: &'a Node, v: &'b Vec<usize>) -> Option<Node<'a>> {
@@ -29,15 +36,8 @@ fn traverse<'a, 'b>(n: &'a Node, v: &'b Vec<usize>) -> Option<Node<'a>> {
 }
 
 impl Chapter {
-    pub fn from_fiction_page_row(node: Node, client: &RoyalClient) -> Option<Chapter> {
-        Self::from_path(
-            node.children().nth(1)?.children().nth(1)?.attr("href")?,
-            client,
-        )
-    }
-
-    pub fn from_path(path: &str, client: &RoyalClient) -> Option<Chapter> {
-        let result = client.get(path).ok()?;
+    pub fn from_reference(reference: &ChapterReference, client: &RoyalClient) -> Option<Chapter> {
+        let result = client.get(&reference.path).ok()?;
         let document = Document::from_read(result.text().ok()?.as_bytes()).ok()?;
         let profile_info: Node = document.find(Class("profile-info")).next().unwrap();
         let published = traverse(&profile_info, &vec![3, 1, 3])?
@@ -48,12 +48,10 @@ impl Chapter {
             Some(x) => x.attr("unixtime")?.parse::<u32>().ok()?,
             None => published,
         };
-        let fic_header = document.find(Class("fic-header")).next()?;
-        let name = traverse(&fic_header, &vec![1, 3, 8, 0])?.text();
         let content = Self::join_content(document.find(Class("chapter-content")).next()?);
         let chapter = Chapter {
-            name,
-            path: path.to_string(),
+            name: reference.name.to_string(),
+            path: reference.path.to_string(),
             content,
             published,
             edited,
@@ -81,6 +79,21 @@ impl Chapter {
     }
 }
 
+impl ChapterReference {
+    pub fn from_fiction_page_row(row: &Node) -> Option<ChapterReference> {
+        Some(ChapterReference {
+            path: row.attr("data-url")?.to_string(),
+            time: row
+                .find(Name("time"))
+                .next()?
+                .attr("unixtime")?
+                .parse::<u32>()
+                .ok()?,
+            name: traverse(row, &vec![1, 1, 0])?.text().trim().to_string(),
+        })
+    }
+}
+
 pub struct RoyalClient {
     client: Client,
 }
@@ -97,10 +110,10 @@ impl RoyalClient {
         let result = self.get(&full_path).ok()?;
         let document = Document::from_read(result.text().ok()?.as_bytes()).ok()?;
         let title = document.find(Name("h1")).into_iter().next().unwrap().text();
-        let chapters: Vec<Chapter> = document
+        let chapters: Vec<ChapterReference> = document
             .find(Class("chapter-row"))
             .into_iter()
-            .filter_map(|x| Chapter::from_fiction_page_row(x, self))
+            .filter_map(|x| ChapterReference::from_fiction_page_row(&x))
             .collect();
         Some(Fiction { title, chapters })
     }
