@@ -1,7 +1,8 @@
 mod api;
-use api::*;
+mod app;
 
-fn main() {
-    let client = RoyalClient::new();
-    client.get_fiction(36049);
+fn main() -> std::io::Result<()> {
+    let mut app = app::App::new()?;
+    app.run()?;
+    Ok(())
 }

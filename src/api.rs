@@ -5,6 +5,8 @@ use select::{
     predicate::{Class, Name},
 };
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 pub struct Fiction {
     pub title: String,
     pub chapters: Vec<ChapterReference>,
@@ -21,7 +23,7 @@ pub struct ChapterReference {
 pub struct Chapter {
     pub name: String,
     pub path: String,
-    pub content: String,
+    pub content: Vec<String>,
     pub published: u32,
     pub edited: u32,
 }
@@ -48,7 +50,11 @@ impl Chapter {
             Some(x) => x.attr("unixtime")?.parse::<u32>().ok()?,
             None => published,
         };
-        let content = Self::join_content(document.find(Class("chapter-content")).next()?);
+        let mut content = Vec::new();
+        Self::join_content(
+            document.find(Class("chapter-content")).next()?,
+            &mut content,
+        );
         let chapter = Chapter {
             name: reference.name.to_string(),
             path: reference.path.to_string(),
@@ -59,25 +65,30 @@ impl Chapter {
         Some(chapter)
     }
 
-    fn join_content(node: Node) -> String {
+    fn join_content(node: Node, content: &mut Vec<String>) {
         match node.data() {
-            Data::Element(..) => node
-                .children()
-                .map(Self::join_content)
-                .collect::<Vec<String>>()
-                .join("\n"),
+            Data::Element(..) => {
+                for child in node.children() {
+                    Self::join_content(child, content);
+                }
+            }
             Data::Text(..) => {
-                if node.text().as_str() == "\n" {
-                    String::new()
-                } else {
-                    node.text()
+                if node.text().as_str() != "\n" {
+                    content.push(node.text())
                 }
             }
             // idk wtf a comment is supposed to mean
-            Data::Comment(..) => String::new(),
+            Data::Comment(..) => {}
         }
     }
 }
+
+const MINUTE: u32 = 60;
+const HOUR: u32 = 60 * MINUTE;
+const DAY: u32 = 24 * HOUR;
+const WEEK: u32 = 7 * DAY;
+const MONTH: u32 = 30 * DAY;
+const YEAR: u32 = 365 * DAY;
 
 impl ChapterReference {
     pub fn from_fiction_page_row(row: &Node) -> Option<ChapterReference> {
@@ -91,6 +102,39 @@ impl ChapterReference {
                 .ok()?,
             name: traverse(row, &vec![1, 1, 0])?.text().trim().to_string(),
         })
+    }
+
+    pub fn to_string(&self, width: u16, x_margin: u16) -> String {
+        let width = width - x_margin * 2;
+        let s = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u32
+            - self.time;
+        let mut time = match s {
+            YEAR.. => format!("{} years ago", s / YEAR),
+            MONTH.. => format!("{} months ago", s / MONTH),
+            WEEK.. => format!("{} weeks ago", s / WEEK),
+            DAY.. => format!("{} days ago", s / DAY),
+            HOUR.. => format!("{} hours ago", s / HOUR),
+            MINUTE.. => format!("{} minutes ago", s / MINUTE),
+            _ => format!("{} seconds ago", s),
+        };
+        let mut full_len = self.name.len() + 2 + time.len();
+        if full_len > width as usize {
+            let words: Vec<&str> = time.split(' ').collect();
+            time = format!("{} {}", words[0], words[1]);
+            full_len -= 4;
+        }
+        let spacing_width = (width as i32 - full_len as i32).max(2);
+        let spacing = String::from_utf8(vec![b' '; spacing_width as usize]).unwrap();
+        let name = self
+            .name
+            .chars()
+            .take(width as usize - 2 * x_margin as usize - time.len() - spacing_width as usize)
+            .collect::<String>();
+        let margin = String::from_utf8(vec![b' '; x_margin as usize]).unwrap();
+        format!("{}{}{}{}", margin, name, spacing, time)
     }
 }
 
