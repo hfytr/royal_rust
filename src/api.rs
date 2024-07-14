@@ -133,8 +133,7 @@ impl ChapterReference {
             .chars()
             .take(width as usize - 2 * x_margin as usize - time.len() - spacing_width as usize)
             .collect::<String>();
-        let margin = String::from_utf8(vec![b' '; x_margin as usize]).unwrap();
-        format!("{}{}{}{}", margin, name, spacing, time)
+        format!("{}{}{}", name, spacing, time)
     }
 }
 

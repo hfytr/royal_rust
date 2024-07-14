@@ -25,7 +25,6 @@ pub struct App {
     reading_state: ReadingWindowState,
     is_reading: bool,
     chapter_state: ChapterListState,
-    content: Vec<String>,
 }
 
 impl App {
@@ -36,12 +35,14 @@ impl App {
             terminal: Terminal::new(CrosstermBackend::new(stdout()))?,
             client: RoyalClient::new(),
             reading_state: ReadingWindowState::default(),
-            chapter_state: ChapterListState::new(0, 0),
+            chapter_state: ChapterListState::new(Vec::new(), 0, 0),
             is_reading: false,
         })
     }
 
     pub fn run(&mut self) -> Result<()> {
+        let chapters = self.client.get_fiction(40920).unwrap().chapters;
+        self.chapter_state.chapters = chapters;
         loop {
             self.terminal.draw(|frame| {
                 let layout = Layout::default()
@@ -66,9 +67,8 @@ impl App {
                         .borders(Borders::ALL),
                     layout[1],
                 );
-                let chapters = self.client.get_fiction(40920).unwrap().chapters;
                 frame.render_stateful_widget(
-                    ChapterList::new(chapters, (2, 1)),
+                    ChapterList::new((2, 1)),
                     layout[1],
                     &mut self.chapter_state,
                 );
@@ -81,9 +81,9 @@ impl App {
                 );
 
                 frame.render_stateful_widget(
-                    ReadingWindow::new(self.content, (3, 2)),
+                    ReadingWindow::new((3, 2)),
                     layout[2],
-                    &mut Some(self.reading_state),
+                    &mut self.reading_state,
                 )
             })?;
             if event::poll(std::time::Duration::from_millis(16))? {
@@ -121,7 +121,17 @@ impl App {
                         self.reading_state.line += 1;
                     }
                     KeyCode::Char('k') => {
-                        self.reading_state.line -= 1;
+                        // overflow mega sadge
+                        self.reading_state.line = self.reading_state.line.max(1) - 1;
+                    }
+                    KeyCode::Enter => {
+                        self.reading_state.is_reading = true;
+                        self.reading_state.text = Chapter::from_reference(
+                            &self.chapter_state.chapters[self.chapter_state.selected_line as usize],
+                            &self.client,
+                        )
+                        .unwrap()
+                        .content;
                     }
                     _ => {}
                 }

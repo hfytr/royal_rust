@@ -9,12 +9,13 @@ use ratatui::{
 use tui_big_text::BigText;
 
 pub struct ReadingWindow {
-    text: Vec<String>,
     margin: (u16, u16),
 }
 
 #[derive(Default)]
 pub struct ReadingWindowState {
+    pub text: Vec<String>,
+    pub is_reading: bool,
     pub line: u16,
 }
 
@@ -23,7 +24,7 @@ impl ReadingWindowState {
         &self,
         width: u16,
         height: u16,
-        text: Vec<String>,
+        text: &Vec<String>,
         margin: (u16, u16),
     ) -> Vec<String> {
         let mut wrapped_lines = vec![String::new(); margin.1 as usize];
@@ -52,50 +53,55 @@ impl ReadingWindowState {
         wrapped_lines
     }
 
-    pub fn new(line: u16) -> ReadingWindowState {
-        Self { line }
+    pub fn new(text: Vec<String>, line: u16, is_reading: bool) -> ReadingWindowState {
+        Self {
+            text,
+            line,
+            is_reading,
+        }
     }
 }
 
 impl ReadingWindow {
-    pub fn new(text: Vec<String>, margin: (u16, u16)) -> ReadingWindow {
-        Self { text, margin }
+    pub fn new(margin: (u16, u16)) -> ReadingWindow {
+        Self { margin }
     }
 }
 
 impl StatefulWidget for ReadingWindow {
-    type State = Option<ReadingWindowState>;
-    fn render(self, area: Rect, buf: &mut Buffer, wrapped_state: &mut Self::State) {
-        match wrapped_state {
-            None => {
-                BigText::builder()
-                    .style(Color::White)
-                    .alignment(Alignment::Center)
-                    .lines(vec![
-                        Line::styled("Royal", Color::White),
-                        Line::styled("Rust", Color::White),
-                    ])
-                    .build()
-                    .unwrap()
-                    .render(
-                        Rect {
-                            x: area.x,
-                            y: (area.y + area.height) / 2 - 7,
-                            height: area.height,
-                            width: area.width,
-                        },
-                        buf,
-                    );
+    type State = ReadingWindowState;
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        if state.is_reading {
+            state.line = state.line.max(0);
+            state.line = state.line.min(state.text.len() as u16 - 2);
+            let lines = state.wrap_lines(area.width - 2, area.height - 2, &state.text, self.margin);
+            for (i, line) in lines.into_iter().enumerate() {
+                buf.set_line(
+                    area.x + 1,
+                    area.y + i as u16,
+                    &Line::styled(line, Color::White),
+                    area.width,
+                );
             }
-            Some(state) => {
-                state.line = state.line.max(0);
-                state.line = state.line.min(self.text.len() as u16 - 1);
-                let lines =
-                    state.wrap_lines(area.width - 2, area.height - 2, self.text, self.margin);
-                for (i, line) in lines.into_iter().enumerate() {
-                    buf.set_line(area.x + 1, area.y + i as u16, &Line::raw(line), area.width);
-                }
-            }
+        } else {
+            BigText::builder()
+                .style(Color::White)
+                .alignment(Alignment::Center)
+                .lines(vec![
+                    Line::styled("Royal", Color::White),
+                    Line::styled("Rust", Color::White),
+                ])
+                .build()
+                .unwrap()
+                .render(
+                    Rect {
+                        x: area.x,
+                        y: (area.y + area.height) / 2 - 7,
+                        height: area.height,
+                        width: area.width,
+                    },
+                    buf,
+                );
         }
     }
 }
