@@ -5,38 +5,105 @@ use ratatui::{
     text::Line,
     widgets::StatefulWidget,
 };
+use std::marker::PhantomData;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::api::ChapterReference;
+use crate::api::{ChapterReference, Fiction};
 
-pub struct ListWidget {
+pub trait Listable {
+    fn to_string(&self, width: u16, x_margin: u16) -> String;
+}
+
+const MINUTE: u32 = 60;
+const HOUR: u32 = 60 * MINUTE;
+const DAY: u32 = 24 * HOUR;
+const WEEK: u32 = 7 * DAY;
+const MONTH: u32 = 30 * DAY;
+const YEAR: u32 = 365 * DAY;
+
+impl Listable for ChapterReference {
+    fn to_string(&self, width: u16, x_margin: u16) -> String {
+        let width = width - x_margin * 2;
+        let s = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u32
+            - self.time;
+        let mut time = match s {
+            YEAR.. => format!("{} years ago", s / YEAR),
+            MONTH.. => format!("{} months ago", s / MONTH),
+            WEEK.. => format!("{} weeks ago", s / WEEK),
+            DAY.. => format!("{} days ago", s / DAY),
+            HOUR.. => format!("{} hours ago", s / HOUR),
+            MINUTE.. => format!("{} minutes ago", s / MINUTE),
+            _ => format!("{} seconds ago", s),
+        };
+        let mut full_len = self.name.len() + 2 + time.len();
+        if full_len > width as usize {
+            let words: Vec<&str> = time.split(' ').collect();
+            time = format!("{} {}", words[0], words[1]);
+            full_len -= 4;
+        }
+        let spacing_width = (width as i32 - full_len as i32).max(2);
+        let spacing = String::from_utf8(vec![b' '; spacing_width as usize]).unwrap();
+        let name = self
+            .name
+            .chars()
+            .take(width as usize - 2 * x_margin as usize - time.len() - spacing_width as usize)
+            .collect::<String>();
+        format!("{}{}{}", name, spacing, time)
+    }
+}
+
+impl Listable for Fiction {
+    fn to_string(&self, width: u16, x_margin: u16) -> String {
+        if self.title.len() as u16 > width - 2 - 2 * x_margin {
+            format!(
+                "{}...",
+                self.title
+                    .chars()
+                    .take((width - 5 - 2 * x_margin) as usize)
+                    .collect::<String>()
+            )
+        } else {
+            self.title.clone()
+        }
+    }
+}
+
+pub struct ListWidget<T: Listable> {
+    phantom: PhantomData<T>,
     margin: (u16, u16),
 }
 
 #[derive(Debug)]
-pub struct ListState {
+pub struct ListState<T: Listable> {
     pub selected_line: u16,
     pub top_line: u16,
-    pub items: Vec<ChapterReference>,
+    pub items: Vec<T>,
 }
 
-impl ListState {
-    pub fn new(chapters: Vec<ChapterReference>, selected_line: u16, top_line: u16) -> ListState {
+impl<T: Listable> ListState<T> {
+    pub fn new(items: Vec<T>, selected_line: u16, top_line: u16) -> ListState<T> {
         Self {
-            items: chapters,
+            items,
             selected_line,
             top_line,
         }
     }
 }
 
-impl ListWidget {
-    pub fn new(margin: (u16, u16)) -> ListWidget {
-        Self { margin }
+impl<T: Listable> ListWidget<T> {
+    pub fn new(margin: (u16, u16)) -> ListWidget<T> {
+        Self {
+            phantom: PhantomData,
+            margin,
+        }
     }
 }
 
-impl StatefulWidget for ListWidget {
-    type State = ListState;
+impl<T: Listable> StatefulWidget for ListWidget<T> {
+    type State = ListState<T>;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         // state not validated in event handler
         if state.items.is_empty() {
@@ -49,9 +116,11 @@ impl StatefulWidget for ListWidget {
             (state.selected_line as i32 - area.height as i32 - 3 - self.margin.1 as i32 * 2).max(0)
                 as u16,
         );
-        // dbg!(state.top_line);
         let num_entries = area.height - 2 - self.margin.1 * 2;
-        for i in state.top_line..(state.top_line + num_entries).min(state.items.len() as u16) {
+        let end = (state.top_line + num_entries).min(state.items.len() as u16);
+        for (i, item) in
+            (state.top_line..end).map(|i| -> (u16, &T) { (i, &state.items[i as usize]) })
+        {
             let style = if i as u16 == state.selected_line {
                 Style::default().fg(Color::Black).bg(Color::Blue)
             } else {
@@ -60,10 +129,7 @@ impl StatefulWidget for ListWidget {
             buf.set_line(
                 area.x + 1 + self.margin.0,
                 area.y + self.margin.1 + 1 + i - state.top_line,
-                &Line::styled(
-                    state.items[i as usize].to_string(area.width, self.margin.0 + 1),
-                    style,
-                ),
+                &Line::styled(item.to_string(area.width, self.margin.0 + 1), style),
                 area.width,
             );
         }

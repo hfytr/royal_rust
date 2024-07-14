@@ -4,11 +4,14 @@ use select::{
     node::{Data, Node},
     predicate::{Class, Name},
 };
+use std::fs::{create_dir_all, read_to_string, File};
+use std::io::Write;
+use std::path::Path;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
+#[derive(Debug)]
 pub struct Fiction {
     pub title: String,
+    pub id: usize,
     pub chapters: Vec<ChapterReference>,
 }
 
@@ -26,6 +29,61 @@ pub struct Chapter {
     pub content: Vec<String>,
     pub published: u32,
     pub edited: u32,
+}
+
+impl Fiction {
+    pub fn write_to_file(path: &str, fictions: &Vec<Fiction>) -> std::io::Result<()> {
+        if let Some(parent) = Path::new(path).parent() {
+            create_dir_all(parent)?;
+        }
+        let mut file = File::options()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        file.write_all(
+            fictions
+                .into_iter()
+                .map(|f| {
+                    format!(
+                        "{}.{}.{}-",
+                        f.id,
+                        f.title,
+                        f.chapters
+                            .iter()
+                            .map(|c| format!("{},{},{}.", c.path, c.name, c.time))
+                            .fold(String::new(), |acc, elem| format!("{}{}", acc, elem))
+                    )
+                })
+                .fold(String::new(), |acc, elem| format!("{}{}", acc, elem))
+                .as_bytes(),
+        )?;
+        Ok(())
+    }
+
+    pub fn from_file(path: &str) -> std::io::Result<Vec<Fiction>> {
+        let file_string = read_to_string(path)?;
+        Ok(file_string
+            .split('-')
+            .map(|s| {
+                let mut split = s.split('.');
+                Fiction {
+                    id: split.next().unwrap().parse::<usize>().unwrap(),
+                    title: split.next().unwrap().to_string(),
+                    chapters: split
+                        .map(|s| {
+                            let mut split = s.split(',');
+                            ChapterReference {
+                                path: split.next().unwrap().to_string(),
+                                name: split.next().unwrap().to_string(),
+                                time: split.next().unwrap().parse::<u32>().unwrap(),
+                            }
+                        })
+                        .collect::<Vec<ChapterReference>>(),
+                }
+            })
+            .collect::<Vec<Fiction>>())
+    }
 }
 
 fn traverse<'a, 'b>(n: &'a Node, v: &'b Vec<usize>) -> Option<Node<'a>> {
@@ -83,13 +141,6 @@ impl Chapter {
     }
 }
 
-const MINUTE: u32 = 60;
-const HOUR: u32 = 60 * MINUTE;
-const DAY: u32 = 24 * HOUR;
-const WEEK: u32 = 7 * DAY;
-const MONTH: u32 = 30 * DAY;
-const YEAR: u32 = 365 * DAY;
-
 impl ChapterReference {
     pub fn from_fiction_page_row(row: &Node) -> Option<ChapterReference> {
         Some(ChapterReference {
@@ -102,38 +153,6 @@ impl ChapterReference {
                 .ok()?,
             name: traverse(row, &vec![1, 1, 0])?.text().trim().to_string(),
         })
-    }
-
-    pub fn to_string(&self, width: u16, x_margin: u16) -> String {
-        let width = width - x_margin * 2;
-        let s = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u32
-            - self.time;
-        let mut time = match s {
-            YEAR.. => format!("{} years ago", s / YEAR),
-            MONTH.. => format!("{} months ago", s / MONTH),
-            WEEK.. => format!("{} weeks ago", s / WEEK),
-            DAY.. => format!("{} days ago", s / DAY),
-            HOUR.. => format!("{} hours ago", s / HOUR),
-            MINUTE.. => format!("{} minutes ago", s / MINUTE),
-            _ => format!("{} seconds ago", s),
-        };
-        let mut full_len = self.name.len() + 2 + time.len();
-        if full_len > width as usize {
-            let words: Vec<&str> = time.split(' ').collect();
-            time = format!("{} {}", words[0], words[1]);
-            full_len -= 4;
-        }
-        let spacing_width = (width as i32 - full_len as i32).max(2);
-        let spacing = String::from_utf8(vec![b' '; spacing_width as usize]).unwrap();
-        let name = self
-            .name
-            .chars()
-            .take(width as usize - 2 * x_margin as usize - time.len() - spacing_width as usize)
-            .collect::<String>();
-        format!("{}{}{}", name, spacing, time)
     }
 }
 
@@ -158,7 +177,11 @@ impl RoyalClient {
             .into_iter()
             .filter_map(|x| ChapterReference::from_fiction_page_row(&x))
             .collect();
-        Some(Fiction { title, chapters })
+        Some(Fiction {
+            id,
+            title,
+            chapters,
+        })
     }
 
     pub fn get(&self, path: &str) -> Result<Response, reqwest::Error> {
