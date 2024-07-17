@@ -6,13 +6,14 @@ use ratatui::{
     text::Line,
     widgets::StatefulWidget,
 };
+use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::api::{ChapterReference, Fiction};
 
-pub trait Listable {
+pub trait Listable: Debug {
     fn to_string(&self, width: u16, x_margin: u16) -> String;
 }
 
@@ -92,7 +93,7 @@ impl<T: Listable> ListState<T> {
             items,
             selected_line,
             top_line,
-            reversed: false,
+            reversed: true,
         }
     }
 }
@@ -120,16 +121,26 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
             (state.selected_line as i32 - area.height as i32 - 3 - self.margin.1 as i32 * 2).max(0)
                 as u16,
         );
-        let num_entries = area.height - 2 - self.margin.1 * 2;
-        let end = (state.top_line + num_entries).min(state.items.len() as u16);
-        let index_iter = state.top_line..end;
+        let num_entries =
+            (area.height - 2 - self.margin.1 * 2).min(state.items.len() as u16 - state.top_line);
+        let line_num = (state.top_line..).take(num_entries as usize);
+        // if state.items.len() > 1 {
+        //     dbg!(state.items.last().unwrap());
+        //     dbg!(num_entries);
+        //     dbg!(state.top_line);
+        // }
         let item_iter = if state.reversed {
-            Either::Left((state.top_line..end).rev())
+            Either::Left(state.items.iter().rev())
         } else {
-            Either::Right(state.top_line..end)
+            Either::Right(state.items.iter())
         }
-        .map(|i| &state.items[i as usize]);
-        for (i, item) in zip(index_iter, item_iter) {
+        .take(num_entries as usize);
+        for (i, item) in zip(line_num, item_iter) {
+            // if i == 1 {
+            //     dbg!(i);
+            //     dbg!(state.items.len());
+            //     dbg!(item);
+            // }
             let style = if i as u16 == state.selected_line {
                 Style::default().fg(Color::Black).bg(Color::Blue)
             } else {

@@ -153,21 +153,6 @@ impl Chapter {
     }
 }
 
-impl ChapterReference {
-    pub fn from_fiction_page_row(row: &Node) -> Option<ChapterReference> {
-        Some(ChapterReference {
-            path: row.attr("data-url")?.to_string(),
-            time: row
-                .find(Name("time"))
-                .next()?
-                .attr("unixtime")?
-                .parse::<u64>()
-                .ok()?,
-            title: traverse(row, &vec![1, 1, 0])?.text().trim().to_string(),
-        })
-    }
-}
-
 pub struct RoyalClient {
     client: Client,
 }
@@ -184,32 +169,45 @@ impl RoyalClient {
         let result = self.get(&full_path).ok()?;
         let document = Document::from_read(result.text().ok()?.as_bytes()).ok()?;
         let title = document.find(Name("h1")).into_iter().next().unwrap().text();
+
         let possible_chap_lists = document
-            // .find(And(Class("page-container-bg-solid"), Name("script")))
             .find(Child(Class("page-container-bg-solid"), Name("script")))
             .into_iter()
             .collect::<Vec<_>>();
-        let chapters: Vec<ChapterReference> =
-            serde_json::from_str::<Vec<OfficialChapterReference>>(
-                possible_chap_lists[possible_chap_lists.len() - 3]
-                    .children()
-                    .next()
-                    .unwrap()
-                    .text()
-                    .split('\n')
-                    .nth(2)
-                    .unwrap()
-                    .split('=')
-                    .nth(1)
-                    .unwrap()
-                    .trim()
-                    .strip_suffix(';')
-                    .unwrap(),
-            )
+
+        let text = possible_chap_lists[possible_chap_lists.len() - 3]
+            .children()
+            .next()
             .unwrap()
+            .text();
+
+        let start_index = text
+            .find("window.chapters = ")
+            .expect("failed to find chapters")
+            + "window.chapters = ".len();
+        let skip_initial = &text.as_bytes()[start_index..];
+
+        let mut chapters_json = "";
+        let mut stack = 0;
+        for (i, byte) in skip_initial.iter().enumerate() {
+            if *byte == b'[' {
+                stack += 1;
+            } else if *byte == b']' {
+                stack -= 1;
+            }
+            if stack == 0 {
+                chapters_json = std::str::from_utf8(&skip_initial[0..=i])
+                    .expect("failed to convert from json to &str");
+                break;
+            }
+        }
+
+        let chapters = serde_json::from_str::<Vec<OfficialChapterReference>>(chapters_json)
+            .expect("failed to parse chapters json")
             .into_iter()
-            .map(|x| ChapterReference::from(x))
-            .collect();
+            .map(ChapterReference::from)
+            .collect::<Vec<ChapterReference>>();
+
         Some(Fiction {
             id,
             title,

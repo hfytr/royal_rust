@@ -73,13 +73,13 @@ impl App {
                 );
                 if self.fictions_showing {
                     frame.render_stateful_widget(
-                        ListWidget::new((1, 2)),
+                        ListWidget::new((1, 1)),
                         layout[0],
                         &mut self.fiction_state,
                     );
                 } else {
                     frame.render_stateful_widget(
-                        ListWidget::new((1, 2)),
+                        ListWidget::new((1, 1)),
                         layout[0],
                         &mut self.chapter_state,
                     );
@@ -174,6 +174,9 @@ impl App {
                 KeyCode::Esc => {
                     self.fiction_in = None;
                 }
+                KeyCode::Backspace => {
+                    self.fiction_in.as_mut().unwrap().pop();
+                }
                 KeyCode::Enter => {
                     match self
                         .client
@@ -208,17 +211,19 @@ impl App {
                     // overflow mega sadge
                     self.reading_state.line = self.reading_state.line.max(1) - 1;
                 }
+                KeyCode::Char('d') => {
+                    self.fiction_state.items.remove(self.get_item_ind());
+                }
                 KeyCode::Char('l') => {
+                    let item_ind = self.get_item_ind();
                     if self.fictions_showing && !self.fiction_state.items.is_empty() {
                         self.fictions_showing = false;
-                        self.chapter_state.items = self.fiction_state.items
-                            [self.fiction_state.selected_line as usize]
-                            .chapters
-                            .clone();
+                        self.chapter_state.items =
+                            self.fiction_state.items[item_ind].chapters.clone();
                     } else if !self.fictions_showing && !self.chapter_state.items.is_empty() {
                         self.reading_state.is_reading = true;
                         self.reading_state.text = Chapter::from_reference(
-                            &self.chapter_state.items[self.chapter_state.selected_line as usize],
+                            &self.chapter_state.items[item_ind],
                             &self.client,
                         )
                         .unwrap()
@@ -243,5 +248,17 @@ impl App {
             }
         }
         false
+    }
+
+    fn get_item_ind(&self) -> usize {
+        if self.fictions_showing && self.fiction_state.reversed {
+            self.fiction_state.items.len() - 1 - self.fiction_state.selected_line as usize
+        } else if self.fictions_showing {
+            self.fiction_state.selected_line as usize
+        } else if self.chapter_state.reversed {
+            self.chapter_state.items.len() - 1 - self.chapter_state.selected_line as usize
+        } else {
+            self.chapter_state.selected_line as usize
+        }
     }
 }
