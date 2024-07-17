@@ -15,13 +15,12 @@ use ratatui::{
     style::{Color, Style},
     text::Line,
     widgets::{Block, Borders, Widget},
-    Terminal,
+    Frame, Terminal,
 };
 mod chap_list;
 mod reading_window;
 
 pub struct App {
-    terminal: Terminal<CrosstermBackend<Stdout>>,
     client: RoyalClient,
     reading_state: ReadingWindowState,
     fiction_state: ListState<Fiction>,
@@ -38,10 +37,7 @@ impl App {
         );
         let client = RoyalClient::new();
         let fiction_vec = Fiction::from_file(&client, &path).unwrap_or(Vec::new());
-        stdout().execute(EnterAlternateScreen)?;
-        enable_raw_mode()?;
         let app = App {
-            terminal: Terminal::new(CrosstermBackend::new(stdout()))?,
             client,
             reading_state: ReadingWindowState::default(),
             fiction_state: ListState::new(fiction_vec, 0, 0),
@@ -53,76 +49,11 @@ impl App {
     }
 
     pub fn run(&mut self) -> Result<()> {
+        stdout().execute(EnterAlternateScreen)?;
+        enable_raw_mode()?;
+        let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
         loop {
-            self.terminal.draw(|frame| {
-                let layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
-                    .split(frame.size());
-                let title = if self.fictions_showing {
-                    "Fictions"
-                } else {
-                    "Chapters"
-                };
-                frame.render_widget(
-                    Block::new()
-                        .title(title)
-                        .style(Color::Blue)
-                        .borders(Borders::ALL),
-                    layout[0],
-                );
-                if self.fictions_showing {
-                    frame.render_stateful_widget(
-                        ListWidget::new((1, 1)),
-                        layout[0],
-                        &mut self.fiction_state,
-                    );
-                } else {
-                    frame.render_stateful_widget(
-                        ListWidget::new((1, 1)),
-                        layout[0],
-                        &mut self.chapter_state,
-                    );
-                }
-
-                frame.render_widget(
-                    Block::new()
-                        .title("Content")
-                        .style(Color::Blue)
-                        .borders(Borders::ALL),
-                    layout[1],
-                );
-
-                frame.render_stateful_widget(
-                    ReadingWindow::new((3, 2)),
-                    layout[1],
-                    &mut self.reading_state,
-                );
-
-                if self.fiction_in.is_some() {
-                    let x = frame.size().width / 2 - 35;
-                    let y = frame.size().height / 2 - 2;
-                    Block::new()
-                        .title("Fiction Input")
-                        .style(Style::default().bg(Color::Reset).fg(Color::White))
-                        .borders(Borders::ALL)
-                        .render(
-                            Rect {
-                                width: 70,
-                                height: 4,
-                                x,
-                                y,
-                            },
-                            frame.buffer_mut(),
-                        );
-                    frame.buffer_mut().set_line(
-                        x + 2,
-                        y + 2,
-                        &Line::styled(self.fiction_in.as_ref().unwrap(), Color::White),
-                        17,
-                    );
-                }
-            })?;
+            terminal.draw(|frame| self.draw(frame))?;
             if event::poll(std::time::Duration::from_millis(16))? {
                 if let event::Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press && self.handle_key(key) {
@@ -131,10 +62,89 @@ impl App {
                 }
             }
         }
-        self.terminal.clear()?;
+        terminal.clear()?;
         stdout().execute(LeaveAlternateScreen)?;
         disable_raw_mode()?;
         Ok(())
+    }
+
+    fn draw(&mut self, frame: &mut Frame) {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
+            .split(frame.size());
+        let title = if self.fictions_showing {
+            "Fictions"
+        } else {
+            "Chapters"
+        };
+        frame.render_widget(
+            Block::new()
+                .title(title)
+                .style(Color::Blue)
+                .borders(Borders::ALL),
+            layout[0],
+        );
+        if self.fictions_showing {
+            frame.render_stateful_widget(
+                ListWidget::new((1, 1)),
+                layout[0],
+                &mut self.fiction_state,
+            );
+        } else {
+            frame.render_stateful_widget(
+                ListWidget::new((1, 1)),
+                layout[0],
+                &mut self.chapter_state,
+            );
+        }
+
+        let title = if self.reading_state.is_reading {
+            format!(
+                " {} - {} ",
+                self.fiction_state.items[self.get_fiction_ind()].title,
+                self.chapter_state.items[self.get_chapter_ind()].title,
+            )
+        } else {
+            String::new()
+        };
+        frame.render_widget(
+            Block::new()
+                .title(title)
+                .style(Color::Blue)
+                .borders(Borders::ALL),
+            layout[1],
+        );
+
+        frame.render_stateful_widget(
+            ReadingWindow::new((3, 2)),
+            layout[1],
+            &mut self.reading_state,
+        );
+
+        if self.fiction_in.is_some() {
+            let x = frame.size().width / 2 - 35;
+            let y = frame.size().height / 2 - 2;
+            Block::new()
+                .title("Fiction Input")
+                .style(Style::default().bg(Color::Reset).fg(Color::White))
+                .borders(Borders::ALL)
+                .render(
+                    Rect {
+                        width: 70,
+                        height: 4,
+                        x,
+                        y,
+                    },
+                    frame.buffer_mut(),
+                );
+            frame.buffer_mut().set_line(
+                x + 2,
+                y + 2,
+                &Line::styled(self.fiction_in.as_ref().unwrap(), Color::White),
+                17,
+            );
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> bool {
@@ -251,14 +261,26 @@ impl App {
     }
 
     fn get_item_ind(&self) -> usize {
-        if self.fictions_showing && self.fiction_state.reversed {
-            self.fiction_state.items.len() - 1 - self.fiction_state.selected_line as usize
-        } else if self.fictions_showing {
-            self.fiction_state.selected_line as usize
-        } else if self.chapter_state.reversed {
+        if self.fictions_showing {
+            self.get_fiction_ind()
+        } else {
+            self.get_chapter_ind()
+        }
+    }
+
+    fn get_chapter_ind(&self) -> usize {
+        if self.chapter_state.reversed {
             self.chapter_state.items.len() - 1 - self.chapter_state.selected_line as usize
         } else {
             self.chapter_state.selected_line as usize
+        }
+    }
+
+    fn get_fiction_ind(&self) -> usize {
+        if self.fiction_state.reversed {
+            self.fiction_state.items.len() - 1 - self.fiction_state.selected_line as usize
+        } else {
+            self.fiction_state.selected_line as usize
         }
     }
 }
