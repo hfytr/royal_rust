@@ -32,27 +32,22 @@ impl Listable for ChapterReference {
             .unwrap()
             .as_secs() as u64
             - self.time;
-        let mut time = match s {
-            YEAR.. => format!("{} years ago", s / YEAR),
-            MONTH.. => format!("{} months ago", s / MONTH),
-            WEEK.. => format!("{} weeks ago", s / WEEK),
-            DAY.. => format!("{} days ago", s / DAY),
-            HOUR.. => format!("{} hours ago", s / HOUR),
-            MINUTE.. => format!("{} minutes ago", s / MINUTE),
-            _ => format!("{} seconds ago", s),
+        let time = match s {
+            YEAR.. => format!("{} years", s / YEAR),
+            MONTH.. => format!("{} months", s / MONTH),
+            WEEK.. => format!("{} weeks", s / WEEK),
+            DAY.. => format!("{} days", s / DAY),
+            HOUR.. => format!("{} hours", s / HOUR),
+            MINUTE.. => format!("{} minutes", s / MINUTE),
+            _ => format!("{} seconds", s),
         };
-        let mut full_len = self.title.len() + 2 + time.len();
-        if full_len > width as usize {
-            let words: Vec<&str> = time.split(' ').collect();
-            time = format!("{} {}", words[0], words[1]);
-            full_len -= 4;
-        }
-        let spacing_width = (width as i32 - full_len as i32).max(2);
+        let full_len = self.title.len() + time.len();
+        let spacing_width = (width as i32 - full_len as i32).max(3);
         let spacing = String::from_utf8(vec![b' '; spacing_width as usize]).unwrap();
         let name = self
             .title
             .chars()
-            .take(width as usize - 2 * x_margin as usize - time.len() - spacing_width as usize)
+            .take(width as usize - time.len() - spacing_width as usize)
             .collect::<String>();
         format!("{}{}{}", name, spacing, time)
     }
@@ -124,11 +119,6 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
         let num_entries =
             (area.height - 2 - self.margin.1 * 2).min(state.items.len() as u16 - state.top_line);
         let line_num = (state.top_line..).take(num_entries as usize);
-        // if state.items.len() > 1 {
-        //     dbg!(state.items.last().unwrap());
-        //     dbg!(num_entries);
-        //     dbg!(state.top_line);
-        // }
         let item_iter = if state.reversed {
             Either::Left(state.items.iter().rev())
         } else {
@@ -136,11 +126,6 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
         }
         .take(num_entries as usize);
         for (i, item) in zip(line_num, item_iter) {
-            // if i == 1 {
-            //     dbg!(i);
-            //     dbg!(state.items.len());
-            //     dbg!(item);
-            // }
             let style = if i as u16 == state.selected_line {
                 Style::default().fg(Color::Black).bg(Color::Blue)
             } else {
