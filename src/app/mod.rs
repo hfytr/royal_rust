@@ -3,7 +3,6 @@ use std::io::{stdout, Result, Stdout};
 use chap_list::{ListState, ListWidget};
 use reading_window::{ReadingWindow, ReadingWindowState};
 
-use crate::api::{Chapter, ChapterReference, Fiction, RoyalClient};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -17,6 +16,7 @@ use ratatui::{
     widgets::{Block, Borders, Widget},
     Frame, Terminal,
 };
+use royal_api::{Chapter, ChapterReference, Fiction, RoyalClient};
 mod chap_list;
 mod reading_window;
 

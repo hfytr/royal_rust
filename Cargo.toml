@@ -3,6 +3,15 @@ name = "royal_rust"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "royal_api"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[[bin]]
+name = "rrtui"
+path = "src/main.rs"
+
 [dependencies]
 reqwest = { version = "0.12.5", features = ["blocking"] }
 openssl = { version = "0.10", features = ["vendored"] }

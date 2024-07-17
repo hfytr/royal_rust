@@ -11,7 +11,7 @@ use std::iter::zip;
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::api::{ChapterReference, Fiction};
+use royal_api::{ChapterReference, Fiction};
 
 pub trait Listable: Debug {
     fn to_string(&self, width: u16, x_margin: u16) -> String;
