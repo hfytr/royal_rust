@@ -2,6 +2,10 @@
 name = "royal_rust"
 version = "0.1.0"
 edition = "2021"
+license-file = "LICENSE.txt"
+description = "A read-only TUI for royalroad, with a corrisponding API"
+repository = "https://github.com/hfytr/royal_rust"
+homepage = "https://github.com/hfytr/royal_rust"
 
 [lib]
 name = "royal_api"
