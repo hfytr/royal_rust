@@ -32,13 +32,19 @@ pub struct App {
 
 impl App {
     pub fn new() -> Result<App> {
+        let path = format!(
+            "{}/.cache/royal-rust/fictions.txt",
+            home::home_dir().unwrap().to_str().unwrap()
+        );
+        let client = RoyalClient::new();
+        let fiction_vec = Fiction::from_file(&client, &path).unwrap_or(Vec::new());
         stdout().execute(EnterAlternateScreen)?;
         enable_raw_mode()?;
-        let mut app = App {
+        let app = App {
             terminal: Terminal::new(CrosstermBackend::new(stdout()))?,
-            client: RoyalClient::new(),
+            client,
             reading_state: ReadingWindowState::default(),
-            fiction_state: ListState::new(Vec::new(), 0, 0),
+            fiction_state: ListState::new(fiction_vec, 0, 0),
             chapter_state: ListState::new(Vec::new(), 0, 0),
             fictions_showing: true,
             fiction_in: None,
@@ -143,8 +149,11 @@ impl App {
                 }
                 KeyCode::Char('K') => {
                     if self.fictions_showing {
+                        // prevent underflow
+                        self.fiction_state.selected_line = self.fiction_state.selected_line.max(1);
                         self.fiction_state.selected_line -= 1;
                     } else {
+                        self.chapter_state.selected_line = self.chapter_state.selected_line.max(1);
                         self.chapter_state.selected_line -= 1;
                     }
                 }
@@ -184,11 +193,12 @@ impl App {
         } else {
             match key.code {
                 KeyCode::Char('q') => {
-                    Fiction::write_to_file(
-                        "~/.cache/royal-rust/fictions.txt",
-                        &self.fiction_state.items,
-                    )
-                    .expect("failed to save fictions");
+                    let path = format!(
+                        "{}/.cache/royal-rust/fictions.txt",
+                        home::home_dir().unwrap().to_str().unwrap()
+                    );
+                    Fiction::write_to_file(&path, &self.fiction_state.items)
+                        .expect("failed to save fictions");
                     return true;
                 }
                 KeyCode::Char('j') => {
@@ -199,10 +209,13 @@ impl App {
                     self.reading_state.line = self.reading_state.line.max(1) - 1;
                 }
                 KeyCode::Char('l') => {
-                    if self.fictions_showing {
+                    if self.fictions_showing && !self.fiction_state.items.is_empty() {
                         self.fictions_showing = false;
-                        self.chapter_state.items = self.fiction_state.items;
-                    } else {
+                        self.chapter_state.items = self.fiction_state.items
+                            [self.fiction_state.selected_line as usize]
+                            .chapters
+                            .clone();
+                    } else if !self.fictions_showing && !self.chapter_state.items.is_empty() {
                         self.reading_state.is_reading = true;
                         self.reading_state.text = Chapter::from_reference(
                             &self.chapter_state.items[self.chapter_state.selected_line as usize],
@@ -218,6 +231,13 @@ impl App {
                 KeyCode::Char('o') => {
                     self.fictions_showing = true;
                     self.fiction_in = Some(String::from("Enter New Fiction ID"));
+                }
+                KeyCode::Char('r') => {
+                    if self.fictions_showing {
+                        self.fiction_state.reversed = !self.fiction_state.reversed;
+                    } else {
+                        self.chapter_state.reversed = !self.chapter_state.reversed;
+                    }
                 }
                 _ => {}
             }

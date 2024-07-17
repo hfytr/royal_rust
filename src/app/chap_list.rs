@@ -1,3 +1,4 @@
+use itertools::Either;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -5,6 +6,7 @@ use ratatui::{
     text::Line,
     widgets::StatefulWidget,
 };
+use std::iter::zip;
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,12 +16,12 @@ pub trait Listable {
     fn to_string(&self, width: u16, x_margin: u16) -> String;
 }
 
-const MINUTE: u32 = 60;
-const HOUR: u32 = 60 * MINUTE;
-const DAY: u32 = 24 * HOUR;
-const WEEK: u32 = 7 * DAY;
-const MONTH: u32 = 30 * DAY;
-const YEAR: u32 = 365 * DAY;
+const MINUTE: u64 = 60;
+const HOUR: u64 = 60 * MINUTE;
+const DAY: u64 = 24 * HOUR;
+const WEEK: u64 = 7 * DAY;
+const MONTH: u64 = 30 * DAY;
+const YEAR: u64 = 365 * DAY;
 
 impl Listable for ChapterReference {
     fn to_string(&self, width: u16, x_margin: u16) -> String {
@@ -27,7 +29,7 @@ impl Listable for ChapterReference {
         let s = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() as u32
+            .as_secs() as u64
             - self.time;
         let mut time = match s {
             YEAR.. => format!("{} years ago", s / YEAR),
@@ -38,7 +40,7 @@ impl Listable for ChapterReference {
             MINUTE.. => format!("{} minutes ago", s / MINUTE),
             _ => format!("{} seconds ago", s),
         };
-        let mut full_len = self.name.len() + 2 + time.len();
+        let mut full_len = self.title.len() + 2 + time.len();
         if full_len > width as usize {
             let words: Vec<&str> = time.split(' ').collect();
             time = format!("{} {}", words[0], words[1]);
@@ -47,7 +49,7 @@ impl Listable for ChapterReference {
         let spacing_width = (width as i32 - full_len as i32).max(2);
         let spacing = String::from_utf8(vec![b' '; spacing_width as usize]).unwrap();
         let name = self
-            .name
+            .title
             .chars()
             .take(width as usize - 2 * x_margin as usize - time.len() - spacing_width as usize)
             .collect::<String>();
@@ -81,6 +83,7 @@ pub struct ListState<T: Listable> {
     pub selected_line: u16,
     pub top_line: u16,
     pub items: Vec<T>,
+    pub reversed: bool,
 }
 
 impl<T: Listable> ListState<T> {
@@ -89,6 +92,7 @@ impl<T: Listable> ListState<T> {
             items,
             selected_line,
             top_line,
+            reversed: false,
         }
     }
 }
@@ -118,9 +122,14 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
         );
         let num_entries = area.height - 2 - self.margin.1 * 2;
         let end = (state.top_line + num_entries).min(state.items.len() as u16);
-        for (i, item) in
-            (state.top_line..end).map(|i| -> (u16, &T) { (i, &state.items[i as usize]) })
-        {
+        let index_iter = state.top_line..end;
+        let item_iter = if state.reversed {
+            Either::Left((state.top_line..end).rev())
+        } else {
+            Either::Right(state.top_line..end)
+        }
+        .map(|i| &state.items[i as usize]);
+        for (i, item) in zip(index_iter, item_iter) {
             let style = if i as u16 == state.selected_line {
                 Style::default().fg(Color::Black).bg(Color::Blue)
             } else {

@@ -1,25 +1,27 @@
+use chrono::NaiveDateTime;
 use reqwest::blocking::{Client, Response};
 use select::{
     document::Document,
     node::{Data, Node},
-    predicate::{Class, Name},
+    predicate::{Child, Class, Name},
 };
+use serde::{Deserialize, Serialize};
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io::Write;
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Fiction {
     pub title: String,
     pub id: usize,
     pub chapters: Vec<ChapterReference>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ChapterReference {
     pub path: String,
-    pub name: String,
-    pub time: u32,
+    pub title: String,
+    pub time: u64,
 }
 
 #[derive(Debug, Default)]
@@ -27,8 +29,8 @@ pub struct Chapter {
     pub name: String,
     pub path: String,
     pub content: Vec<String>,
-    pub published: u32,
-    pub edited: u32,
+    pub published: u64,
+    pub edited: u64,
 }
 
 impl Fiction {
@@ -43,46 +45,20 @@ impl Fiction {
             .open(path)?;
         file.write_all(
             fictions
-                .into_iter()
-                .map(|f| {
-                    format!(
-                        "{}.{}.{}-",
-                        f.id,
-                        f.title,
-                        f.chapters
-                            .iter()
-                            .map(|c| format!("{},{},{}.", c.path, c.name, c.time))
-                            .fold(String::new(), |acc, elem| format!("{}{}", acc, elem))
-                    )
-                })
-                .fold(String::new(), |acc, elem| format!("{}{}", acc, elem))
+                .iter()
+                .map(|f| f.id.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
                 .as_bytes(),
         )?;
         Ok(())
     }
 
-    pub fn from_file(path: &str) -> std::io::Result<Vec<Fiction>> {
-        let file_string = read_to_string(path)?;
-        Ok(file_string
-            .split('-')
-            .map(|s| {
-                let mut split = s.split('.');
-                Fiction {
-                    id: split.next().unwrap().parse::<usize>().unwrap(),
-                    title: split.next().unwrap().to_string(),
-                    chapters: split
-                        .map(|s| {
-                            let mut split = s.split(',');
-                            ChapterReference {
-                                path: split.next().unwrap().to_string(),
-                                name: split.next().unwrap().to_string(),
-                                time: split.next().unwrap().parse::<u32>().unwrap(),
-                            }
-                        })
-                        .collect::<Vec<ChapterReference>>(),
-                }
-            })
-            .collect::<Vec<Fiction>>())
+    pub fn from_file(client: &RoyalClient, path: &str) -> std::io::Result<Vec<Fiction>> {
+        Ok(read_to_string(path)?
+            .split('\n')
+            .filter_map(|s| client.get_fiction(s.parse::<usize>().ok()?))
+            .collect())
     }
 }
 
@@ -95,6 +71,34 @@ fn traverse<'a, 'b>(n: &'a Node, v: &'b Vec<usize>) -> Option<Node<'a>> {
     Some(cur)
 }
 
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+struct OfficialChapterReference {
+    id: usize,
+    volumeId: Option<String>,
+    title: String,
+    slug: String,
+    date: String,
+    order: usize,
+    visible: usize,
+    subscriptionTiers: Option<String>,
+    doesNotRollOver: bool,
+    isUnlocked: bool,
+    url: String,
+}
+
+impl From<OfficialChapterReference> for ChapterReference {
+    fn from(value: OfficialChapterReference) -> Self {
+        Self {
+            path: value.url,
+            title: value.title,
+            time: NaiveDateTime::parse_from_str(&value.date, "%Y-%m-%dT%H:%M:%SZ")
+                .unwrap()
+                .and_utc()
+                .timestamp() as u64,
+        }
+    }
+}
+
 impl Chapter {
     pub fn from_reference(reference: &ChapterReference, client: &RoyalClient) -> Option<Chapter> {
         let result = client.get(&reference.path).ok()?;
@@ -102,10 +106,10 @@ impl Chapter {
         let profile_info: Node = document.find(Class("profile-info")).next().unwrap();
         let published = traverse(&profile_info, &vec![3, 1, 3])?
             .attr("unixtime")?
-            .parse::<u32>()
+            .parse::<u64>()
             .ok()?;
         let edited = match traverse(&profile_info, &vec![3, 3, 3]) {
-            Some(x) => x.attr("unixtime")?.parse::<u32>().ok()?,
+            Some(x) => x.attr("unixtime")?.parse::<u64>().ok()?,
             None => published,
         };
         let mut content = Vec::new();
@@ -114,7 +118,7 @@ impl Chapter {
             &mut content,
         );
         let chapter = Chapter {
-            name: reference.name.to_string(),
+            name: reference.title.to_string(),
             path: reference.path.to_string(),
             content,
             published,
@@ -131,8 +135,16 @@ impl Chapter {
                 }
             }
             Data::Text(..) => {
-                if node.text().as_str() != "\n" {
-                    content.push(node.text())
+                if node.text().as_str() == "\n"
+                    && !content.is_empty()
+                    && content.last().unwrap().len() != 0
+                {
+                    content.push(String::new());
+                } else if node.text() != "\n" {
+                    if content.is_empty() {
+                        content.push(String::new());
+                    }
+                    content.last_mut().unwrap().push_str(&node.text())
                 }
             }
             // idk wtf a comment is supposed to mean
@@ -149,9 +161,9 @@ impl ChapterReference {
                 .find(Name("time"))
                 .next()?
                 .attr("unixtime")?
-                .parse::<u32>()
+                .parse::<u64>()
                 .ok()?,
-            name: traverse(row, &vec![1, 1, 0])?.text().trim().to_string(),
+            title: traverse(row, &vec![1, 1, 0])?.text().trim().to_string(),
         })
     }
 }
@@ -172,10 +184,31 @@ impl RoyalClient {
         let result = self.get(&full_path).ok()?;
         let document = Document::from_read(result.text().ok()?.as_bytes()).ok()?;
         let title = document.find(Name("h1")).into_iter().next().unwrap().text();
-        let chapters: Vec<ChapterReference> = document
-            .find(Class("chapter-row"))
+        let possible_chap_lists = document
+            // .find(And(Class("page-container-bg-solid"), Name("script")))
+            .find(Child(Class("page-container-bg-solid"), Name("script")))
             .into_iter()
-            .filter_map(|x| ChapterReference::from_fiction_page_row(&x))
+            .collect::<Vec<_>>();
+        let chapters: Vec<ChapterReference> =
+            serde_json::from_str::<Vec<OfficialChapterReference>>(
+                possible_chap_lists[possible_chap_lists.len() - 3]
+                    .children()
+                    .next()
+                    .unwrap()
+                    .text()
+                    .split('\n')
+                    .nth(2)
+                    .unwrap()
+                    .split('=')
+                    .nth(1)
+                    .unwrap()
+                    .trim()
+                    .strip_suffix(';')
+                    .unwrap(),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|x| ChapterReference::from(x))
             .collect();
         Some(Fiction {
             id,

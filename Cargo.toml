@@ -9,3 +9,8 @@ openssl = { version = "0.10", features = ["vendored"] }
 select = "0.6.0"
 ratatui = "0.27.0"
 tui-big-text = "0.4.5"
+home = "0.5.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.120"
+itertools = "0.13.0"
+chrono = "0.4.38"
