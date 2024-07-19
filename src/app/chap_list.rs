@@ -111,8 +111,8 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
         }
         state.selected_line = state.selected_line.clamp(0, state.items.len() as u16 - 1);
         state.top_line = state.top_line.clamp(
-            (state.selected_line as i32 - area.height as i32 - 3 - self.margin.1 as i32 * 2).max(0)
-                as u16,
+            (state.selected_line as i32 - (area.height as i32 - 3 - self.margin.1 as i32 * 2))
+                .max(0) as u16,
             state.selected_line,
         );
         let num_entries =
@@ -123,6 +123,7 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
         } else {
             Either::Right(state.items.iter())
         }
+        .skip(state.top_line as usize)
         .take(num_entries as usize);
         for (i, item) in zip(line_num, item_iter) {
             let style = if i as u16 == state.selected_line {
