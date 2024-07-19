@@ -109,12 +109,11 @@ impl<T: Listable> StatefulWidget for ListWidget<T> {
         if state.items.is_empty() {
             return;
         }
-        state.selected_line = state.selected_line.max(0);
-        state.selected_line = state.selected_line.min(state.items.len() as u16 - 1);
-        state.top_line = state.top_line.min(state.selected_line);
-        state.top_line = state.top_line.max(
+        state.selected_line = state.selected_line.clamp(0, state.items.len() as u16 - 1);
+        state.top_line = state.top_line.clamp(
             (state.selected_line as i32 - area.height as i32 - 3 - self.margin.1 as i32 * 2).max(0)
                 as u16,
+            state.selected_line,
         );
         let num_entries =
             (area.height - 2 - self.margin.1 * 2).min(state.items.len() as u16 - state.top_line);

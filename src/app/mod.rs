@@ -31,10 +31,10 @@ pub struct App {
 
 impl App {
     pub fn new() -> Result<App> {
-        let path = format!(
-            "{}/.cache/royal-rust/fictions.txt",
-            home::home_dir().unwrap().to_str().unwrap()
-        );
+        let path = dirs::config_dir()
+            .expect("failed to find config_dir")
+            .join("royal_rust")
+            .join("fictions.txt");
         let client = RoyalClient::new();
         let fiction_vec = Fiction::from_file(&client, &path).unwrap_or(Vec::new());
         let app = App {
@@ -160,11 +160,11 @@ impl App {
                 KeyCode::Char('K') => {
                     if self.fictions_showing {
                         // prevent underflow
-                        self.fiction_state.selected_line = self.fiction_state.selected_line.max(1);
-                        self.fiction_state.selected_line -= 1;
+                        self.fiction_state.selected_line =
+                            self.fiction_state.selected_line.checked_sub(1).unwrap_or(0);
                     } else {
-                        self.chapter_state.selected_line = self.chapter_state.selected_line.max(1);
-                        self.chapter_state.selected_line -= 1;
+                        self.chapter_state.selected_line =
+                            self.chapter_state.selected_line.checked_sub(1).unwrap_or(0);
                     }
                 }
                 _ => {}
@@ -173,7 +173,13 @@ impl App {
             match key.code {
                 KeyCode::Char(c) => {
                     if c.is_digit(10) {
-                        if self.fiction_in.as_ref().unwrap().parse::<f64>().is_ok() {
+                        if self
+                            .fiction_in
+                            .as_ref()
+                            .unwrap()
+                            .chars()
+                            .all(|c| c.is_ascii_digit())
+                        {
                             self.fiction_in.as_mut().unwrap().push(c);
                         } else {
                             // nothing input yet, default message
@@ -206,10 +212,10 @@ impl App {
         } else {
             match key.code {
                 KeyCode::Char('q') => {
-                    let path = format!(
-                        "{}/.cache/royal-rust/fictions.txt",
-                        home::home_dir().unwrap().to_str().unwrap()
-                    );
+                    let path = dirs::config_dir()
+                        .expect("failed to find config_dir")
+                        .join("royal_rust")
+                        .join("fictions.txt");
                     Fiction::write_to_file(&path, &self.fiction_state.items)
                         .expect("failed to save fictions");
                     return true;
@@ -219,7 +225,7 @@ impl App {
                 }
                 KeyCode::Char('k') => {
                     // overflow mega sadge
-                    self.reading_state.line = self.reading_state.line.max(1) - 1;
+                    self.reading_state.line = self.reading_state.line.checked_sub(1).unwrap_or(0);
                 }
                 KeyCode::Char('d') => {
                     self.fiction_state.items.remove(self.get_item_ind());

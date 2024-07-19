@@ -32,8 +32,7 @@ impl FictionInWidget {
 impl StatefulWidget for FictionInWidget {
     type State = FictionInState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        state.line = state.line.max(0);
-        state.line = state.line.min(state.text.len() as u16 - 2);
+        state.line = state.line.clamp(0, state.text.len() as u16 - 2);
         let lines = state.wrap_lines(area.width - 2, area.height - 2, &state.text, self.margin);
         for (i, line) in lines.into_iter().enumerate() {
             buf.set_line(

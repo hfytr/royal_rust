@@ -34,8 +34,8 @@ pub struct Chapter {
 }
 
 impl Fiction {
-    pub fn write_to_file(path: &str, fictions: &Vec<Fiction>) -> std::io::Result<()> {
-        if let Some(parent) = Path::new(path).parent() {
+    pub fn write_to_file(path: &Path, fictions: &Vec<Fiction>) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
             create_dir_all(parent)?;
         }
         let mut file = File::options()
@@ -54,7 +54,7 @@ impl Fiction {
         Ok(())
     }
 
-    pub fn from_file(client: &RoyalClient, path: &str) -> std::io::Result<Vec<Fiction>> {
+    pub fn from_file(client: &RoyalClient, path: &Path) -> std::io::Result<Vec<Fiction>> {
         Ok(read_to_string(path)?
             .split('\n')
             .filter_map(|s| client.get_fiction(s.parse::<usize>().ok()?))
