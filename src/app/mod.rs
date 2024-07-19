@@ -1,4 +1,4 @@
-use std::io::{stdout, Result, Stdout};
+use std::io::{stdout, Result};
 
 use chap_list::{ListState, ListWidget};
 use reading_window::{ReadingWindow, ReadingWindowState};
@@ -13,12 +13,14 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Line,
-    widgets::{Block, Borders, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
     Frame, Terminal,
 };
 use royal_api::{Chapter, ChapterReference, Fiction, RoyalClient};
 mod chap_list;
 mod reading_window;
+
+const CONTROLS: &str = " q: quit, j: scroll down, k: scroll up, J: sidebar scroll down, K: sidebar scroll down, o: new fiction, l: select in sidebar";
 
 pub struct App {
     client: RoyalClient,
@@ -69,10 +71,18 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
+        let master_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Min(0), Constraint::Length(1)])
+            .split(frame.size());
+        frame.render_widget(
+            Paragraph::new(CONTROLS).left_aligned().style(Color::White),
+            master_layout[1],
+        );
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
-            .split(frame.size());
+            .split(master_layout[0]);
         let title = if self.fictions_showing {
             "Fictions"
         } else {
