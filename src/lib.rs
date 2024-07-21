@@ -74,15 +74,19 @@ fn traverse<'a, 'b>(n: &'a Node, v: &'b Vec<usize>) -> Option<Node<'a>> {
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 struct OfficialChapterReference {
     id: usize,
-    volumeId: Option<String>,
     title: String,
     slug: String,
     date: String,
     order: usize,
     visible: usize,
-    subscriptionTiers: Option<String>,
-    doesNotRollOver: bool,
-    isUnlocked: bool,
+    #[serde(rename = "volumeId")]
+    volume_id: Option<String>,
+    #[serde(rename = "subscriptionTiers")]
+    subscription_tiers: Option<String>,
+    #[serde(rename = "doesNotRollOver")]
+    does_not_roll_over: bool,
+    #[serde(rename = "isUnlocked")]
+    is_unlocked: bool,
     url: String,
 }
 

@@ -20,7 +20,7 @@ use royal_api::{Chapter, ChapterReference, Fiction, RoyalClient};
 mod chap_list;
 mod reading_window;
 
-const CONTROLS: &str = " q: quit, j: scroll down, k: scroll up, J: sidebar scroll down, K: sidebar scroll down, o: new fiction, l: select in sidebar";
+const CONTROLS: &str = " q: quit, j: scroll down, k: scroll up, J: sidebar scroll down, K: sidebar scroll up, o: new fiction, l: select in sidebar, r: reverse sort order";
 
 pub struct App {
     client: RoyalClient,
@@ -243,10 +243,12 @@ impl App {
                 KeyCode::Char('l') => {
                     let item_ind = self.get_item_ind();
                     if self.fictions_showing && !self.fiction_state.items.is_empty() {
+                        self.chapter_state.selected_line = 0;
                         self.fictions_showing = false;
                         self.chapter_state.items =
                             self.fiction_state.items[item_ind].chapters.clone();
                     } else if !self.fictions_showing && !self.chapter_state.items.is_empty() {
+                        self.reading_state.line = 0;
                         self.reading_state.is_reading = true;
                         self.reading_state.text = Chapter::from_reference(
                             &self.chapter_state.items[item_ind],
