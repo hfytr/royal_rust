@@ -80,7 +80,7 @@ struct OfficialChapterReference {
     order: usize,
     visible: usize,
     #[serde(rename = "volumeId")]
-    volume_id: Option<String>,
+    volume_id: Option<usize>,
     #[serde(rename = "subscriptionTiers")]
     subscription_tiers: Option<String>,
     #[serde(rename = "doesNotRollOver")]
